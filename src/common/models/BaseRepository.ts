@@ -34,6 +34,10 @@ export const BaseRepository = <T extends ObjectLiteral>(entity: EntityTarget<T>)
             return this.repository.save(data);
         }
 
+        public async delete(id: any): Promise<void> {
+            this.repository.delete(id);
+        }
+
         public async update(id: any, data: DeepPartial<T>): Promise<T> {
             const register = (await this.findById(id)) as T;
 

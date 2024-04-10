@@ -6,8 +6,8 @@ import { Controller } from '../../../decorators/Controller';
 import { Delete, Get, Post, Put } from '../../../decorators/Methods';
 import { Middlewares } from '../../../decorators/Middlewares';
 import { Roles } from '../../../decorators/Roles';
-import { Store } from '../../../library/entity';
-import { StockRepository, StoreRepository } from '../../../library/repository';
+import { CartItem, ShopCart, Store, StoreItem } from '../../../library/entity';
+import { CartItemRepository, CartRepository, StockRepository, StoreRepository } from '../../../library/repository';
 import { ActionLoger } from '../../../utils/ActionLoger';
 import { StoreValidator } from './Store.validator';
 
@@ -68,7 +68,7 @@ export class StoreController extends BaseController {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Id da loja a ser listada
+     *         description: Id da loja
      *     requestBody:
      *       required: true
      *       content:
@@ -111,7 +111,7 @@ export class StoreController extends BaseController {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Id da loja a ser listada
+     *         description: Id da loja
      *     responses:
      *       200:
      *         $ref: '#/components/responses/Success200'
@@ -167,7 +167,7 @@ export class StoreController extends BaseController {
      *         required: true
      *         schema:
      *           type: string
-     *         description: Id da loja a ser listada
+     *         description: Id da loja
      *     responses:
      *       204:
      *         $ref: '#/components/responses/SuccessEmpty204'
@@ -243,7 +243,7 @@ export class StoreController extends BaseController {
      */
     @Get('/:storeId/stock/:storeItemId')
     @Roles(EnumRoles.ADMIN, EnumRoles.USER)
-    @Middlewares(StoreValidator.onlyId, StoreValidator.onlyStoreItemId)
+    @Middlewares(StoreValidator.onlyId, StoreValidator.storeItemId)
     public async getStoreItem(req: Request, res: Response): Promise<void> {
         const { storeItemId } = req.body;
 
@@ -292,7 +292,7 @@ export class StoreController extends BaseController {
      */
     @Put('/:storeId/stock/:storeItemId')
     @Roles(EnumRoles.ADMIN, EnumRoles.USER)
-    @Middlewares(StoreValidator.onlyId, StoreValidator.onlyStoreItemId, StoreValidator.storeItemData(), ActionLoger.logByRequest)
+    @Middlewares(StoreValidator.onlyId, StoreValidator.storeItemId, StoreValidator.storeItemData(), ActionLoger.logByRequest)
     public async updateStoreItem(req: Request, res: Response): Promise<void> {
         const { storeId, storeItemId: id, quantity, value } = req.body;
 
@@ -302,5 +302,164 @@ export class StoreController extends BaseController {
 
         const item = { ...storeItem, store: undefined };
         return RouteResponse.success(res, item);
+    }
+
+    /**
+     * @swagger
+     * /api/store/{storeId}/cart/{storeItemId}:
+     *   post:
+     *     summary: Adiciona um item ou altera a quantidade de um item ao Carrinho
+     *     tags: [Store]
+     *     description: Adiciona um item da loja ao carrinho ou altera a quantidade do item no carrinho
+     *     security:
+     *       - BearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: storeId
+     *         required: true
+     *         schema:
+     *           type: string
+     *       - in: path
+     *         name: storeItemId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     requestBody:
+     *       required: true
+     *       content:
+     *         application/json:
+     *           schema:
+     *             type: object
+     *             properties:
+     *               quantity:
+     *                 type: number
+     *                 example: 10
+     *     responses:
+     *       200:
+     *         $ref: '#/components/responses/Success200'
+     */
+    @Post('/:storeId/cart/:storeItemId')
+    @Roles(EnumRoles.USER, EnumRoles.ADMIN)
+    @Middlewares(StoreValidator.onlyId, StoreValidator.storeItemId, StoreValidator.storeItemQuantity(), StoreValidator.hasCart)
+    public async addOrUpdateQuantityItemToCart(req: Request, res: Response): Promise<void> {
+        const { cartId, storeItemId, quantity } = req.body;
+
+        try {
+            const cartEntity = (await new CartRepository().findById(cartId)) as ShopCart;
+
+            const storeItemEntity = (await new StockRepository().findById(storeItemId)) as StoreItem;
+
+            await new CartItemRepository().addItemToCart(cartEntity, storeItemEntity, quantity);
+
+            const cart = await new CartRepository().findById(cartId);
+            const parsedCartItems = cart?.cartItems.map(item => ({ ...item, storeItem: { ...item.storeItem, store: undefined } }));
+
+            return RouteResponse.success(res, { cart: { ...cart, cartItems: parsedCartItems } });
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } catch (err: any) {
+            return RouteResponse.badRequest(res, err.message);
+        }
+    }
+
+    /**
+     * @swagger
+     * /api/store/{storeId}/cart:
+     *   get:
+     *     summary: Lista o Carrinho e os Itens nele
+     *     tags: [Store]
+     *     description: Lista o Carrinho vinculado a loja e os itens vinculados a ele
+     *     security:
+     *       - BearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: storeId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     responses:
+     *       200:
+     *         $ref: '#/components/responses/Success200'
+     */
+    @Get('/:storeId/cart')
+    @Roles(EnumRoles.USER, EnumRoles.ADMIN)
+    @Middlewares(StoreValidator.onlyId, StoreValidator.hasCart)
+    public async getItemsFromCart(req: Request, res: Response): Promise<void> {
+        const { cartId } = req.body;
+
+        const cart = (await new CartRepository().findById(cartId)) as ShopCart;
+        const parsedCart = { ...cart, cartItems: cart.cartItems.map(item => ({ ...item, storeItem: { ...item.storeItem, store: undefined } })) };
+
+        return RouteResponse.success(res, { cart: parsedCart });
+    }
+
+    /**
+     * @swagger
+     * /api/store/{storeId}/cart/{cartItemId}:
+     *   get:
+     *     summary: Trazer o item específico do Carrinho
+     *     tags: [Store]
+     *     description: Trazer o item específico do Carrinho
+     *     security:
+     *       - BearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: storeId
+     *         required: true
+     *         schema:
+     *           type: string
+     *       - in: path
+     *         name: cartItemId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     responses:
+     *       200:
+     *         $ref: '#/components/responses/Success200'
+     */
+    @Get('/:storeId/cart/:cartItemId')
+    @Roles(EnumRoles.USER, EnumRoles.ADMIN)
+    @Middlewares(StoreValidator.onlyId, StoreValidator.hasCart, StoreValidator.cartItemId())
+    public async getItemFromCartByCartItemId(req: Request, res: Response): Promise<void> {
+        const { cartItemId } = req.body;
+
+        const cartItem = (await new CartItemRepository().findById(cartItemId)) as CartItem;
+        const parsedCartItem = { ...cartItem, storeItem: { ...cartItem.storeItem, store: undefined } };
+
+        return RouteResponse.success(res, parsedCartItem);
+    }
+
+    /**
+     * @swagger
+     * /api/store/{storeId}/cart/{cartItemId}:
+     *   delete:
+     *     summary: Remove um item do Carrinho
+     *     tags: [Store]
+     *     description: Remove um item do Carrinho vinculado a loja
+     *     security:
+     *       - BearerAuth: []
+     *     parameters:
+     *       - in: path
+     *         name: storeId
+     *         required: true
+     *         schema:
+     *           type: string
+     *       - in: path
+     *         name: cartItemId
+     *         required: true
+     *         schema:
+     *           type: string
+     *     responses:
+     *       204:
+     *         $ref: '#/components/responses/SuccessEmpty204'
+     */
+    @Delete('/:storeId/cart/:cartItemId')
+    @Roles(EnumRoles.USER, EnumRoles.ADMIN)
+    @Middlewares(StoreValidator.onlyId, StoreValidator.hasCart, StoreValidator.cartItemId())
+    public async removeItemFromCart(req: Request, res: Response): Promise<void> {
+        const { cartItemId } = req.body;
+
+        await new CartItemRepository().delete(cartItemId);
+
+        return RouteResponse.successEmpty(res);
     }
 }

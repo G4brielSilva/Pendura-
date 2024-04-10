@@ -8,7 +8,7 @@ export class Logger {
         res.on('finish', () => {
             const { statusCode } = res;
             const elapsedTime = Date.now() - start;
-            console.log(`\n[${new Date().toISOString()}] ${req.method} ${req.path} - ${statusCode} ${elapsedTime}ms`);
+            console.log(`${req.method} ${req.path} - ${statusCode} ${elapsedTime}ms`);
         });
     }
 }

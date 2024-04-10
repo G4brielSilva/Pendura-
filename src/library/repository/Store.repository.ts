@@ -9,7 +9,7 @@ export class StoreRepository extends BaseRepository(Store) {
     /**
      * findStoreByCnpj
      *
-     * @param { string } id
+     * @param { string } cnpj
      * @returns { Promise<Store | null> }
      */
     public async findStoreByCnpj(cnpj: string): Promise<Store | null> {

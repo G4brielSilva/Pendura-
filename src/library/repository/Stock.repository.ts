@@ -27,39 +27,22 @@ export class StockRepository extends BaseRepository(StoreItem) {
      * changeStoreItemStock - Alterar quantidade de itens no estoque
      * @param { string } storeItemId
      * @param { number } quantity
-     * @param { '-' | '+' } operation
      * @returns { Promise<StoreItem> }
      */
-    private async changeStoreItemStock(storeItemId: string, quantity: number, operation: '-' | '+'): Promise<StoreItem> {
-        return this.repository
-            .createQueryBuilder()
-            .update(StoreItem)
-            .set({ quantity: () => `"quantity" ${operation} ${quantity}` })
-            .where('id = :id', { id: storeItemId })
-            .returning('*')
-            .execute()
-            .then(response => response.raw[0]);
+    public async changeStoreItemStock(storeItemId: string, quantity: number): Promise<StoreItem> {
+        return this.update(storeItemId, { quantity });
     }
 
     /**
-     * addStoreItemToStock - Adicionar quantidade de itens no estoque
-     *
+     * transactionStockChange - Subtração de Estoque de Item de Loja após venda
      * @param { string } storeItemId
      * @param { number } quantity
-     * @returns { Promise<StoreItem | null> }
+     * @returns { Promise<StoreItem> }
      */
-    public async addStoreItemToStock(storeItemId: string, quantity: number): Promise<StoreItem> {
-        return this.changeStoreItemStock(storeItemId, quantity, '+');
-    }
+    public async transactionStockChange(storeItemId: string, quantity: number): Promise<StoreItem> {
+        const storeItem = (await this.findById(storeItemId)) as StoreItem;
+        const newStockQuantity = storeItem.quantity - quantity;
 
-    /**
-     * removeStoreItemToStock - Adicionar quantidade de itens no estoque
-     *
-     * @param { string } storeItemId
-     * @param { number } quantity
-     * @returns { Promise<StoreItem | null> }
-     */
-    public async removeStoreItemToStock(storeItemId: string, quantity: number): Promise<StoreItem> {
-        return this.changeStoreItemStock(storeItemId, quantity, '-');
+        return this.changeStoreItemStock(storeItemId, newStockQuantity);
     }
 }

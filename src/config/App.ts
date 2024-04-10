@@ -111,7 +111,7 @@ export class App {
     public async start(): Promise<void> {
         this.databaseConnect();
         this.app.listen(this.port, () => {
-            console.log(`App listening on the http://localhost:${this.port}`);
+            console.log(`App listening on the http://localhost:${this.port}\n\n`);
         });
     }
 }
